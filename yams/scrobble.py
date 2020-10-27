@@ -18,10 +18,14 @@ import yams
 MAX_TRACKS_PER_SCROBBLE = 50
 SCROBBLE_RETRY_INTERVAL = 10
 SCROBBLE_DISK_SAVE_INTERVAL = 1200
+# I really don't know if it's a good idea to use global variables for this but whatever
+STREAM_SCROBBLE_PREVIOUS = None
+STREAM_SCROBBLE_PREVIOUS_TIMESTAMP = 0
 
 logger = logging.getLogger("yams")
 
 SCROBBLES = str(Path(Path.home(), ".config/yams/scrobbles.cache"))
+
 
 
 def save_failed_scrobbles_to_disk(path, scrobbles):
@@ -567,7 +571,8 @@ def print_song_info(client):
     :type client: mpd.MPDClient
     """
 
-    song = client.currentsong()
+    # song = client.currentsong()
+    song = get_current_song(client)
     status = client.status()
 
     # Storing duration info in "time" is deprecated, as per the mpd spec,
@@ -610,7 +615,8 @@ def mpd_wait_for_play(client):
 
     # These need to be out here as there is an external try/catch block checking to see if we hit a connection error, and handle that gracefully
     status = client.status()
-    song = client.currentsong()
+    # song = client.currentsong()
+    song = get_current_song(client)
 
     try:
         state = status["state"]
@@ -636,7 +642,8 @@ def mpd_wait_for_play(client):
 
             # The state has now changed
             status = client.status()
-            song = client.currentsong()
+            # song = client.currentsong()
+            song = get_current_song(client)
             state = status["state"]
 
             in_suitable_state = state == "play"
@@ -677,12 +684,14 @@ def is_track_scrobbleable(song, status):
     # If any of the following are False we are not scrobbleable.
     scrobbleable = check_field("artist", song)
     scrobbleable &= check_field("title", song)
-    # We're doing a 'time' check here for mopidy, which uses it: a deprecated call to mpd
-    scrobbleable &= check_field("duration", status) or check_field("time", status)
-    scrobbleable &= check_field("album", song)
+    # Skip these checks if the audio source is from a live stream.
+    if not song["stream"]:
+        # We're doing a 'time' check here for mopidy, which uses it: a deprecated call to mpd
+        scrobbleable &= check_field("duration", status) or check_field("time", status)
+        scrobbleable &= check_field("album", song)
 
     # If all fields present, check that song duration is not zero (would cause div by zero errors)
-    if scrobbleable:
+    if scrobbleable and not song["stream"]:
         song_duration = float(
             status["duration"]
             if "duration" in status
@@ -692,6 +701,87 @@ def is_track_scrobbleable(song, status):
 
     return scrobbleable
 
+def get_current_song(client):
+    """
+    Wrapper function for client.currentsong() that handles metadata coming from a live stream.
+
+    :param client: The MPD client object
+    :type client: mpd.MPDClient
+
+    :return: Either an unmodified response from client.currentsong(), or a modified version of it that somewhat naively handles cases where both the artist and track name are in the title field.
+    :rtype: dict
+    """
+
+    song = client.currentsong()
+
+    # Checks if the song is a stream. If it is *not* a stream, we can just exit early.
+    if not song["file"].startswith("http://") and not song["file"].startswith("https://"):
+        song["stream"] = False
+        return song
+
+    original_title = song["title"]
+    # This string split should handle most, if not all, situations relating to "Artist - Track title" metadata. I seriously hope no one has " - " in their artist name.
+    split = original_title.split(" - ", 1)
+
+    artist = split[0]
+    track = split[1]
+
+    song["title"] = track
+    song["artist"] = artist
+    # This is useful to skip some checks in the is_track_scrobbleable function.
+    song["stream"] = True
+
+    return song
+
+def handle_livestream_scrobble(song, status, base_url, api_key, api_secret, session):
+    """
+    Sends track.updateNowPlaying requests and track.scrobble requests whenever a track changes.
+    This function is only run when the source of the music is from an internet radio station (specifically via HTTP or HTTPS)
+
+    :param song: The track's info from mpd
+    :param status: A dictionary containing the mpd player status
+    :param base_url: The base Last.FM API url
+    :param api_key: Your API key
+    :param api_secret: Your API secret (given to you when you got your API key)
+    :param session: Your Last.FM session key
+
+    :type song: dict
+    :type status: dict
+    :type base_url: str
+    :type api_key: str
+    :type api_secret: str
+    :type session: str
+    """
+
+    global STREAM_SCROBBLE_PREVIOUS
+    global STREAM_SCROBBLE_PREVIOUS_TIMESTAMP
+
+    # No specific reason for 55, it just needs to be higher than 30 I believe for last.fm to accept the scrobble.
+    status["duration"] = 55
+
+    # This will only be run once at the start of the program when you start listening to something (or are already listening to something when YAMS starts up)
+    if STREAM_SCROBBLE_PREVIOUS is None:
+        STREAM_SCROBBLE_PREVIOUS = song
+        STREAM_SCROBBLE_PREVIOUS_TIMESTAMP = time.time()
+        now_playing(song, status, base_url, api_key, api_secret, session)
+
+    # If STREAM_SCROBBLE_PREVIOUS is an old song, as in, we've switched to a new song, then scrobble STREAM_SCROBBLE_PREVIOUS
+    if not STREAM_SCROBBLE_PREVIOUS is None and not song == STREAM_SCROBBLE_PREVIOUS:
+        scrobble_track(STREAM_SCROBBLE_PREVIOUS, status, STREAM_SCROBBLE_PREVIOUS_TIMESTAMP, base_url, api_key, api_secret, session)
+        # Unsure if it's necessary to wait here. Might as well :]
+        time.sleep(4)
+        now_playing(song, status, base_url, api_key, api_secret, session)
+        STREAM_SCROBBLE_PREVIOUS = song
+        STREAM_SCROBBLE_PREVIOUS_TIMESTAMP = time.time()
+
+def reset_last_livestreamed_song():
+    """
+    We don't want to scrobble things if you switch from playing music coming from an internet radio to playing local music and then back to an internet radio.
+    That's why it's important to reset this to None so that unexpected things don't happen.
+    """
+    global STREAM_SCROBBLE_PREVIOUS
+
+    STREAM_SCROBBLE_PREVIOUS = None
 
 def mpd_watch_track(client, session, config):
     """
@@ -758,8 +848,17 @@ def mpd_watch_track(client, session, config):
             real_time_elapsed = reported_start_time + (time.time() - start_time)
             # logger.info(real_time_elapsed)
 
-            song = client.currentsong()
+            # song = client.currentsong()
+            song = get_current_song(client)
             # logger.debug("Song info: {}".format(song))
+
+            if "stream" in song:
+                if song["stream"]:
+                    handle_livestream_scrobble(song, status, base_url, api_key, api_secret, session)
+                    time.sleep(update_interval)
+                    return
+                else:
+                    reset_last_livestreamed_song()
 
             # Here we check if duration is in the track_info and use it if we can
             # Storing duration info in "time" is deprecated, as per the mpd spec,
