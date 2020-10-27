@@ -3,6 +3,17 @@ YAMS
 
 *Yet Another MPD Scrobbler (For Last.FM)*
 
+## Fork
+This fork adds functionality to scrobble music from internet radio streams. Can't believe I actually had to fork a project and add this functionality myself, instead of it just being implemented in the 3-4 or so Last.fm scrobblers that exist for MPD.
+
+There's a *very* slight caveat with the implementation and that is that scrobbles will only be sent if you've fully finished listening to the song that is playing on the internet radio. So scrobbles are sent on track changes. I don't think you can really solve this problem in any other way honestly.
+
+The version has not been changed, so it's still 0.7.3 as it was when I forked YAMS.
+
+If Berulacks wants to use the code I wrote for this fork then go right ahead. I have not created a pull request for the original repository because I'm unsure of how good of an implementation this really is, but you know, it works at least. I made sure to separate the code and README changes into separate commits, so it should be relatively painless to merge just my commit. By the way, I did not use Black to format the code, so you may want to do that before merging any of my code.
+
+I've modified the Installation section below, but other than that, the README is pretty much unchanged, aside from this big wall of text that is the Fork section.
+
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 YAMS is exactly what its name says it is.
@@ -21,16 +32,16 @@ YAMS is just your run of the mill Last.FM scrobbler. But, if you *really* need t
 `PyYAML`, `psutil` and `python-mpd2` are required. YAMS is written for `python3` *only*.
 
 ## Installation
-### Via Pip
-Run `pip3 install YAMScrobbler` (or maybe just `pip`, depending on your system)
-
-### Via the AUR
-If you're an Arch Linux user you may use the [python-yams](https://aur.archlinux.org/packages/python-yams/) package in the [AUR](https://aur.archlinux.org/) to install YAMS locally. Please see [here](https://wiki.archlinux.org/index.php/Arch_User_Repository#Installing_packages) for instructions if you're new to AUR packages.
-
-**Note:** For those who want to install the `-git` variant of the AUR package, checkout this repo and use the provided `PKGBUILD` at the repository's root folder. That is: check out the repo, `cd` in, and run `makepkg -s` to generate an installable package. The `PKGBUILD` can be re-used to apply updates.
-
 ### From Source
 Clone this repo and run `pip3 install --user -e <path_to_repo>` (omit the `-e` flag if you don't want changes in the repo to be reflected in your local installation; likewise one can omit the `--user` flag for a system-wide installation, though it's really not recommended).
+
+Unsure what the -e flag actually does, but y'know it works so whatever.
+
+```
+$ git clone https://github.com/aukuste/yams
+$ cd yams
+$ pip3 install --user -e ./
+```
 
 ## Running
 
