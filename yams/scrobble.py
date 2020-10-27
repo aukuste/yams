@@ -756,9 +756,6 @@ def handle_livestream_scrobble(song, status, base_url, api_key, api_secret, sess
     global STREAM_SCROBBLE_PREVIOUS
     global STREAM_SCROBBLE_PREVIOUS_TIMESTAMP
 
-    # No specific reason for 55, it just needs to be higher than 30 I believe for last.fm to accept the scrobble.
-    status["duration"] = 55
-
     # This will only be run once at the start of the program when you start listening to something (or are already listening to something when YAMS starts up)
     if STREAM_SCROBBLE_PREVIOUS is None:
         STREAM_SCROBBLE_PREVIOUS = song
@@ -767,12 +764,15 @@ def handle_livestream_scrobble(song, status, base_url, api_key, api_secret, sess
 
     # If STREAM_SCROBBLE_PREVIOUS is an old song, as in, we've switched to a new song, then scrobble STREAM_SCROBBLE_PREVIOUS
     if not STREAM_SCROBBLE_PREVIOUS is None and not song == STREAM_SCROBBLE_PREVIOUS:
-        scrobble_track(STREAM_SCROBBLE_PREVIOUS, status, STREAM_SCROBBLE_PREVIOUS_TIMESTAMP, base_url, api_key, api_secret, session)
-        # Unsure if it's necessary to wait here. Might as well :]
-        time.sleep(4)
-        now_playing(song, status, base_url, api_key, api_secret, session)
-        STREAM_SCROBBLE_PREVIOUS = song
-        STREAM_SCROBBLE_PREVIOUS_TIMESTAMP = time.time()
+        duration = round(time.time() - STREAM_SCROBBLE_PREVIOUS_TIMESTAMP)
+        if duration >= 30:
+            status["duration"] = duration
+            scrobble_track(STREAM_SCROBBLE_PREVIOUS, status, STREAM_SCROBBLE_PREVIOUS_TIMESTAMP, base_url, api_key, api_secret, session)
+            # Unsure if it's necessary to wait here. Might as well :]
+            time.sleep(3)
+            now_playing(song, status, base_url, api_key, api_secret, session)
+            STREAM_SCROBBLE_PREVIOUS = song
+            STREAM_SCROBBLE_PREVIOUS_TIMESTAMP = time.time()
 
 def reset_last_livestreamed_song():
     """
