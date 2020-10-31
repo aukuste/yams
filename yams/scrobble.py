@@ -713,23 +713,24 @@ def get_current_song(client):
     """
 
     song = client.currentsong()
+    song["stream"] = False
 
     # Checks if the song is a stream. If it is *not* a stream, we can just exit early.
     if not song["file"].startswith("http://") and not song["file"].startswith("https://"):
-        song["stream"] = False
         return song
 
     original_title = song["title"]
     # This string split should handle most, if not all, situations relating to "Artist - Track title" metadata. I seriously hope no one has " - " in their artist name.
     split = original_title.split(" - ", 1)
 
-    artist = split[0]
-    track = split[1]
+    if len(split) == 2:
+        artist = split[0]
+        track = split[1]
 
-    song["title"] = track
-    song["artist"] = artist
-    # This is useful to skip some checks in the is_track_scrobbleable function.
-    song["stream"] = True
+        song["title"] = track
+        song["artist"] = artist
+        # This is useful to skip some checks in the is_track_scrobbleable function.
+        song["stream"] = True
 
     return song
 
