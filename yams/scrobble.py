@@ -733,7 +733,7 @@ def get_current_song(client):
             # This is useful to skip some checks in the is_track_scrobbleable function.
             song["stream"] = True
     else:
-        print(song)
+        logger.debug(song)
 
 
     return song
