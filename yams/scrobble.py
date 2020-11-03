@@ -715,11 +715,14 @@ def get_current_song(client):
     song = client.currentsong()
     song["stream"] = False
 
-    # Checks if the song is a stream. If it is *not* a stream, we can just exit early.
-    if not song["file"].startswith("http://") and not song["file"].startswith("https://"):
-        return song
+    if "file" in song:
+        # Checks if the song is a stream. If it is *not* a stream, we can just exit early.
+        if not song["file"].startswith("http://") and not song["file"].startswith("https://"):
+            return song
+    else:
+        logger.debug(song)
 
-    if "title" in song:
+    if "title" in song and "file" in song:
         original_title = song["title"]
         # This string split should handle most, if not all, situations relating to "Artist - Track title" metadata. I seriously hope no one has " - " in their artist name.
         split = original_title.split(" - ", 1)
@@ -734,7 +737,6 @@ def get_current_song(client):
             song["stream"] = True
     else:
         logger.debug(song)
-
 
     return song
 
